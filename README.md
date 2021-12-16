@@ -1,6 +1,6 @@
 # 20211207 ISE Webinar
 
-This project runs Terraform + Ansible demo for ISE. It follows the demo performed during the Automated ISE setup with Infrastructure as Code tools (December 2021) @ [Cisco ISE YouTube Channel] (http://cs.co/ise-videos)
+This project runs Terraform + Ansible demo for ISE. It follows the demo performed during the Automated ISE setup with Infrastructure as Code tools (December 2021) @ [Cisco ISE YouTube Channel](http://cs.co/ise-videos)
 At a high level it does the following:
 
 Terraform:
