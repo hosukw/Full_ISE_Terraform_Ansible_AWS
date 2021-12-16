@@ -1,11 +1,12 @@
 # 20211207 ISE Webinar
 
 This project runs Terraform + Ansible demo for ISE. It follows the demo performed during the Automated ISE setup with Infrastructure as Code tools (December 2021) @ [Cisco ISE YouTube Channel](http://cs.co/ise-videos)
+
 At a high level it does the following:
 
 Terraform:
 - Setup VPC and other networking resources
-- Setup 6 ISE instances: Uses two separate modules
+- Setup 6 ISE instances: Uses two separate modules. One for Admin/Monitoring node with m5.4xlarge instance type and 1.2TB EBS volume, and another for Policy Services node (PSN) with c5.4xlarge instance type and 600GB EBS volume. Also for PSN, the instance IPs are added to the AWS network load balancer to serve RADIUS and TACACS+.
 - Setup AWS Network Load Balancer
 - Setup Route 53 entries
 - Setup S3 bucket with transfer family for SFTP access
@@ -19,7 +20,7 @@ Ansible:
 - add sample policy sets
 - Form a deployment among 6 ISE nodes: Two Admin/Monitoring and Four Policy Services Node
 
-ACME (Automated Certificate Management Environment)
+ACME (Automated Certificate Management Environment):
 - The `ansible_demo.sh` utilizes ACME protocol to get signed certificate from Let's Encrypt OpenCA using DNS validation. This is not mandatory and can be ignored or remarked to skip the process. 
 
 This has been tested and supports Cisco ISE 3.1.
