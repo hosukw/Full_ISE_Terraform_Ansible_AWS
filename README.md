@@ -1,6 +1,6 @@
 # 20211207 ISE Webinar
 
-This project runs Terraform + Ansible demo for ISE. It follos the demo performed during the ISE Webinar here: 
+This project runs Terraform + Ansible demo for ISE. It follos the demo performed during the ISE Webinar here: cs.co/ise-videos
 At a high level it does the following:
 
 Terraform:
