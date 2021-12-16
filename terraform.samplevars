@@ -1,0 +1,13 @@
+# ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠
+# This variables file is not encrypted and is for educational and demonstration 
+# purposes. It is highly recommended to encrypt any files containing secrets 
+# with Terraform/Ansible Vault or other file encryption mechanisms!
+# ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ ⚠ 
+aws_access_key = "DASF8A7DF8A/FAKE"
+aws_secret_key = "09DJSFWN4KJKNTFRGNLERK/FAKE"
+aws_region        = "us-west-2"
+ise_password      = "default1A"
+ad_admin_password = "default1A"
+ise_domain        = "authc.net"
+ami_id            = "ami-0ef2cc6c45ca5fc1f"
+on_prem_network   = "192.168.0.0/16"

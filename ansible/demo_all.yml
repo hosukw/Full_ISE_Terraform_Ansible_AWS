@@ -1,0 +1,845 @@
+---
+- name: ISE Demo
+  hosts: ise_servers
+ 
+  vars_files:
+    - vars.yml.local
+  gather_facts: no
+
+  vars:
+    ise_login: &ise_login
+      ise_hostname: "{{ise_hostname}}"
+      ise_username: "{{ise_username}}"
+      ise_password: "{{ise_password}}"
+      ise_verify: "{{ise_verify}}"
+      ise_debug: false
+
+  tasks:
+
+# Import Let's Encrypt issued certificate for Guest portal
+
+  - name: Import Let's Encrypt Root CA certificate into ISE node
+    cisco.ise.trusted_certificate_import:
+      <<: *ise_login 
+      data: "{{ lookup('file', item) }}"
+      description: "LETS ENCRYPT ROOT"
+      name: "1 LETS Root"
+      allowBasicConstraintCAFalse: false
+      allowOutOfDateCert: true
+      allowSHA1Certificates: true
+      trustForCertificateBasedAdminAuth: false
+      trustForCiscoServicesAuth: false
+      trustForClientAuth: false
+      trustForIseAuth: true
+      validateCertificateExtensions: false
+    with_fileglob:
+      - "../pki/root.cer"
+
+
+  - name: Import Let's Encrypt Intermediate CA certificate into ISE node
+    cisco.ise.trusted_certificate_import:
+      <<: *ise_login 
+      data: "{{ lookup('file', item) }}"
+      description: "LETS ENCRYPT INTERMEDIATE"
+      name: "LETS Intermediate"
+      allowBasicConstraintCAFalse: true
+      allowOutOfDateCert: false
+      allowSHA1Certificates: true
+      trustForCertificateBasedAdminAuth: true
+      trustForCiscoServicesAuth: true
+      trustForClientAuth: true
+      trustForIseAuth: true
+      validateCertificateExtensions: true
+    with_fileglob:
+      - "../pki/fullchain.cer"
+
+### Only Required if using ACME to get signed certificate
+  # - name: Import Let's Encrypt wildcard key pair
+  #   cisco.ise.system_certificate_import:
+  #     <<: *ise_login 
+  #     admin: false
+  #     allowExtendedValidity: true
+  #     allowOutOfDateCert: false
+  #     allowReplacementOfCertificates: true
+  #     allowReplacementOfPortalGroupTag: true
+  #     allowSHA1Certificates: true
+  #     allowWildCardCertificates: true
+  #     data: "{{ lookup('file', '~/pki/wild.authc.net.cer') }}"
+  #     privateKeyData: "{{ lookup('file', '~/pki/wild.authc.net.key') }}"
+  #     name: "LETS ENCRYPT Wildcard via ACME"
+  #     eap: true
+  #     ims: false
+  #     password: ""
+  #     portal: true
+  #     portalGroupTag: "Default Portal Certificate Group"
+  #   #   portalTagTransferForSameSubject: false
+  #     pxgrid: false
+  #     radius: true
+  #   #   roleTransferForSameSubject: false
+  #     saml: false
+  #     validateCertificateExtensions: false
+
+
+# Add S3 as repository
+
+  - name: Create a SFTP repository
+    cisco.ise.repository:
+      <<: *ise_login 
+      state: present
+      name: S3-repository
+      enablePki: true
+      path: /ise-repository
+      serverName: "{{ sftp }}"
+      protocol: SFTP
+      userName: sftp-user
+    register: result
+
+
+# Add AD
+
+  - name: Create active directory cisco.com
+    cisco.ise.active_directory:
+      <<: *ise_login 
+      # ise_debug: "{{ise_debug}}"
+      state: present
+      name: cisco.com
+      description: ''
+      domain: cisco.com
+    register: result
+
+  - name: Create active directory authc.net
+    cisco.ise.active_directory:
+      <<: *ise_login 
+      # ise_debug: "{{ise_debug}}"
+      state: present
+      name: authc.net
+      description: ''
+      domain: authc.net
+    register: result
+
+
+  - name: Add groups and attributes
+    cisco.ise.active_directory:
+      <<: *ise_login 
+      # ise_debug: "{{ise_debug}}"
+      state: present
+      name: authc.net
+      description: ''
+      domain: authc.net
+      # id: result.ise_response.id
+      adgroups:
+        groups:
+        - name: authc.net/Users/Employees
+          sid: S-1-5-21-2506421944-838844734-1746255245-1125
+        - name: authc.net/Users/Domain Users
+          sid: S-1-5-21-2506421944-838844734-1746255245-513
+        - name: authc.net/Users/Domain Computers
+          sid: S-1-5-21-2506421944-838844734-1746255245-515
+        - name: authc.net/Users/Domain Admins
+          sid: S-1-5-21-2506421944-838844734-1746255245-512
+        - name: authc.net/Users/Contractors
+          sid: S-1-5-21-2506421944-838844734-1746255245-1124
+      adAttributes:
+        attributes:
+        - defaultValue: ''
+          internalName: cn
+          name: cn
+          type: STRING
+        - defaultValue: ''
+          internalName: userPrincipalName
+          name: userPrincipalName
+          type: STRING
+        - defaultValue: ''
+          internalName: badPwdCount
+          name: badPwdCount
+          type: STRING
+    register: result
+
+
+  - name: Attempt AD Join
+    block:
+
+    - name: Join all nodes to AD domain authc.net
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "https://{{ ise_hostname }}/ers/config/activedirectory/{{ result.ise_response.id }}/joinAllNodes"
+        method: PUT
+        url_username: "{{ ise_username }}"
+        url_password: "{{ ise_password }}"
+        force_basic_auth: yes
+        headers:
+          Accept: application/json
+          Content-Type: application/json
+        body: '
+          {
+              "OperationAdditionalData" : {
+                  "additionalData" : [ 
+                      {
+                          "name" : "username",
+                          "value" : "{{ad_admin_username}}"
+                      },
+                      {
+                          "name" : "password",
+                          "value" : "{{ad_admin_password}}"
+                      }
+                  ]
+              }
+          }'
+        status_code: 204
+        body_format: json
+        validate_certs: "{{ ise_verify }}"
+        return_content: true
+      register: result
+
+    rescue:
+      - name: Already Joined
+        ansible.builtin.debug:
+          msg: 'Already joined to AD!'
+
+
+# add NADs
+
+  - name: Create C9800
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: C9800
+      description: Catalyst 9800 Controller
+      coaPort: 1700
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.201.61
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create MR52
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: MR52
+      description: Meraki MR52
+      coaPort: 1700
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.100.201
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create Aruba7005
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: Aruba7005
+      description: Aruba 7005 Controller
+      coaPort: 3799
+      profileName: ArubaWireless
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.201.64
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create RADIUS Tester 2
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: RADTEST2
+      description: RADIUS Tester
+      coaPort: 3799
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.201.7
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create RADIUS Tester 1
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: RADTEST1
+      description: RADIUS Tester
+      coaPort: 3799
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.201.205
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create MS390
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: MS390
+      description: Meraki MS390-24
+      coaPort: 1700
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.201.3
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create C9300-24P
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: C9300-24P
+      description: Catalyst 9300-24P Switch
+      coaPort: 1700
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.201.2
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create C3506CX
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: C3506CX
+      description: Catalyst 3506CX Switch
+      coaPort: 1700
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.201.1
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create WLC3504
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: WLC3504
+      description: Cisco 3504 Wireless Controller
+      coaPort: 1700
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.202.61
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+  - name: Create EWLC9115
+    cisco.ise.network_device:
+      <<: *ise_login 
+      state: present
+      name: AP9115
+      description: Cisco Catalyst Enbedded WLC
+      coaPort: 1700
+      NetworkDeviceIPList:
+      - ipaddress: 192.168.80.60
+        mask: 32
+      authenticationSettings:
+        radiusSharedSecret: cisco123
+    register: result
+
+
+# Add Groups and Users
+
+  - name: Create Sales group
+    cisco.ise.identity_group:
+      <<: *ise_login 
+      state: present
+      name: "Sales"
+      description: "Sales"
+      parent: "NAC Group:NAC:IdentityGroups:User Identity Groups"
+    register: identity_group_sales
+
+  - name: Create Engineering group
+    cisco.ise.identity_group:
+      <<: *ise_login 
+      state: present
+      name: "Engineering"
+      description: "Engineering"
+      parent: "NAC Group:NAC:IdentityGroups:User Identity Groups"
+    register: identity_group_engineering
+
+  - name: Create Marketing group
+    cisco.ise.identity_group:
+      <<: *ise_login 
+      state: present
+      name: "Marketing"
+      description: "Marketing"
+      parent: "NAC Group:NAC:IdentityGroups:User Identity Groups"
+    register: identity_group_marketing
+
+  - name: Read Sales group
+    cisco.ise.identity_group:
+      <<: *ise_login 
+      state: present
+      name: "Sales"
+      description: "Sales"
+      parent: "NAC Group:NAC:IdentityGroups:User Identity Groups"
+    register: identity_group_sales
+
+  - name: Read Engineering group
+    cisco.ise.identity_group:
+      <<: *ise_login 
+      state: present
+      name: "Engineering"
+      description: "Engineering"
+      parent: "NAC Group:NAC:IdentityGroups:User Identity Groups"
+    register: identity_group_engineering
+
+  - name: Read Marketing group
+    cisco.ise.identity_group:
+      <<: *ise_login 
+      state: present
+      name: "Marketing"
+      description: "Marketing"
+      parent: "NAC Group:NAC:IdentityGroups:User Identity Groups"
+    register: identity_group_marketing
+
+  - name: Create user Matt
+    cisco.ise.internal_user:
+      <<: *ise_login  
+      state: present
+      name: matt
+      password: "C1sco12345"
+      firstName: "Matt"
+      lastName: "Everywhere"
+      email: "everywhere@cisco.com"
+      changePassword: false
+      enabled: true
+      expiryDateEnabled: false
+      passwordIDStore: Internal Users
+      identityGroups: "{{ identity_group_sales.ise_response.id }}"
+    register: result
+
+  - name: Create user Jeff
+    cisco.ise.internal_user:
+      <<: *ise_login  
+      state: present
+      name: jeff
+      password: "C1sco12345"
+      firstName: "Jeff"
+      lastName: "Anywhere"
+      email: "anywhere@cisco.com"
+      changePassword: false
+      enabled: true
+      expiryDateEnabled: false
+      passwordIDStore: Internal Users
+      identityGroups: "{{ identity_group_marketing.ise_response.id }}"
+    register: result
+
+  - name: Create user Hosuk
+    cisco.ise.internal_user:
+      <<: *ise_login  
+      state: present
+      name: hosuk
+      password: "C1sco12345"
+      changePassword: false
+      enabled: true
+      expiryDateEnabled: false
+      passwordIDStore: Internal Users
+      identityGroups: "{{ identity_group_engineering.ise_response.id }}"
+    register: result
+
+  - name: Create user Hari
+    cisco.ise.internal_user:
+      <<: *ise_login  
+      state: present
+      name: hari
+      password: "C1sco12345"
+      changePassword: false
+      enabled: true
+      expiryDateEnabled: false
+      passwordIDStore: Internal Users
+      identityGroups: "{{ identity_group_marketing.ise_response.id }}"
+    register: result
+
+
+# Add Policy sets
+
+  - name: Create or update a network access conditions
+    cisco.ise.network_access_conditions:
+      <<: *ise_login 
+      state: present
+      conditionType: "LibraryConditionAttributes"
+      isNegate: False
+      name: "EST"
+      dictionaryName: "Network Access"
+      attributeName: "Device IP Address"
+      operator: "equals"
+      attributeValue: "127.0.0.1"
+    register: condition
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "EST"
+    register: condition
+
+  - name: Create EST policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "EST"
+    register: result
+
+
+  - name: Create or update a network access conditions
+    cisco.ise.network_access_conditions:
+      <<: *ise_login 
+      state: present
+      conditionType: "LibraryConditionAttributes"
+      isNegate: False
+      name: "VPN_Employee"
+      dictionaryName: "Cisco-VPN3000"
+      attributeName: "CVPN3000/ASA/PIX7x-Tunnel-Group-Name"
+      operator: "equals"
+      attributeValue: "Employee"
+    register: condition
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "VPN_Employee"
+    register: condition
+
+  - name: Create Employee VPN policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "Employee VPN"
+    register: result
+
+
+  - name: Create or update a network access conditions
+    cisco.ise.network_access_conditions:
+      <<: *ise_login 
+      state: present
+      conditionType: "LibraryConditionAttributes"
+      isNegate: False
+      name: "VPN_Contractor"
+      dictionaryName: "Cisco-VPN3000"
+      attributeName: "CVPN3000/ASA/PIX7x-Tunnel-Group-Name"
+      operator: "equals"
+      attributeValue: "Contractor"
+    register: condition
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "VPN_Contractor"
+    register: condition
+
+  - name: Create Contractor VPN policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "Contractor VPN"
+    register: result
+
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "Wired_802.1X"
+    register: condition
+
+  - name: Create Wired DOT1X policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "Wired DOT1X"
+    register: result
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "Wired_MAB"
+    register: condition
+
+  - name: Create Wired MAB policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "Wired MAB"
+    register: result
+
+
+  - name: Create or update a network access conditions
+    cisco.ise.network_access_conditions:
+      <<: *ise_login 
+      state: present
+      conditionType: "LibraryConditionAttributes"
+      isNegate: False
+      name: "SSID_PSK"
+      dictionaryName: "Radius"
+      attributeName: "Called-Station-ID"
+      operator: "endsWith"
+      attributeValue: "PSK"
+    register: condition
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "SSID_PSK"
+    register: condition
+
+  - name: Create PSK SSID policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "PSK SSID"
+    register: result
+
+
+  - name: Create or update a network access conditions
+    cisco.ise.network_access_conditions:
+      <<: *ise_login 
+      state: present
+      conditionType: "LibraryConditionAttributes"
+      isNegate: False
+      name: "SSID_OPEN"
+      dictionaryName: "Radius"
+      attributeName: "Called-Station-ID"
+      operator: "endsWith"
+      attributeValue: "OPEN"
+    register: condition
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "SSID_OPEN"
+    register: condition
+
+  - name: Create OPEN SSID policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "OPEN SSID"
+    register: result
+    
+
+  - name: Create or update a network access conditions
+    cisco.ise.network_access_conditions:
+      <<: *ise_login 
+      state: present
+      conditionType: "LibraryConditionAttributes"
+      isNegate: False
+      name: "SSID_SECURE"
+      dictionaryName: "Radius"
+      attributeName: "Called-Station-ID"
+      operator: "endsWith"
+      attributeValue: "SECURE"
+    register: condition
+
+  - name: Get a network access conditions by name
+    cisco.ise.network_access_conditions_info:
+      <<: *ise_login 
+      name: "SSID_SECURE"
+    register: condition
+
+  - name: Create SECURE SSID policy set
+    cisco.ise.network_access_policy_set:
+      <<: *ise_login 
+      state: present
+      condition:
+        conditionType: "ConditionReference"
+        isNegate: False
+        id: "{{ condition.ise_response.response.id }}"
+      default: False
+      description: ""
+      isProxy: False
+      rank: 0
+      serviceName: "Default Network Access"
+      name: "SECURE SSID"
+    register: result
+
+  - name: Get all network policy set
+    cisco.ise.network_access_policy_set_info:
+      <<: *ise_login 
+    register: all_policies
+
+
+# Create deployment
+
+  - name: Check if all nodes are in STANDALONE state
+    cisco.ise.personas_check_standalone:
+      name: "{{ item.name }}"
+      ip: "{{ item.ip }}"
+      username: "{{ ise_username }}"
+      password: "{{ ise_password }}"
+    loop:
+      - name: ISE PAN Server 1
+        ip: "{{ pan1_ip }}"
+      - name: ISE PAN Server 2
+        ip: "{{ pan2_ip }}"
+      - name: ISE PSN Server 1
+        ip: "{{ psn1_ip }}"
+      - name: ISE PSN Server 2
+        ip: "{{ psn2_ip }}"
+      - name: ISE PSN Server 3
+        ip: "{{ psn3_ip }}"
+      - name: ISE PSN Server 4
+        ip: "{{ psn4_ip }}"
+
+  - name: Export trusted certificates into primary node
+    cisco.ise.personas_export_certs:
+      primary_ip: "{{ pan1_ip }}"
+      primary_username: "{{ ise_username }}"
+      primary_password: "{{ ise_password }}"
+      name: "{{ item.name }}"
+      ip: "{{ item.ip }}"
+      hostname: "{{ item.hostname }}"
+      username: "{{ ise_username }}"
+      password: "{{ ise_password }}"
+    loop:
+      - name: ISE PAN Server 2
+        ip: "{{ pan2_ip }}"
+        hostname: "{{ pan2_name }}"
+      - name: ISE PSN Server 1
+        ip: "{{ psn1_ip }}"
+        hostname: "{{ psn1_name }}"
+      - name: ISE PSN Server 2
+        ip: "{{ psn2_ip }}"
+        hostname: "{{ psn2_name }}"
+      - name: ISE PSN Server 3
+        ip: "{{ psn3_ip }}"
+        hostname: "{{ psn3_name }}"
+      - name: ISE PSN Server 4
+        ip: "{{ psn4_ip }}"
+        hostname: "{{ psn4_name }}"
+
+  - name: Promote primary node from standalone
+    cisco.ise.personas_promote_primary:
+      ip: "{{ pan1_ip }}"
+      hostname: "{{ pan1_name }}"
+      username: "{{ ise_username }}"
+      password: "{{ ise_password }}"
+      roles:
+        - PPAN
+        - MNT-ACTIVE
+        - PDP
+
+  - name: Wait for primary application server to come up again 
+    pause:
+      minutes: 10
+
+  - name: Join secondary nodes to the deployment
+    cisco.ise.personas_update_roles:
+      primary_ip: "{{ pan1_ip }}"
+      primary_username: "{{ ise_username }}"
+      primary_password: "{{ ise_password }}"
+      name: "{{ item.name }}"
+      local_ip: "{{ item.local_ip }}"
+      hostname: "{{ item.hostname }}"
+      username: "{{ ise_username }}"
+      password: "{{ ise_password }}"
+      domain: "{{ ise_domain }}"
+      roles: "{{ item.roles }}"
+    loop:
+      - name: ISE PAN Server 2
+        local_ip: "{{ pan2_ip }}"
+        hostname: "{{ pan2_name }}"
+        roles:
+          - SPAN
+          - MNT-STANDBY
+      - name: ISE PSN Server 1
+        local_ip: "{{ psn1_ip }}"
+        hostname: "{{ psn1_name }}"
+        roles:
+          - PDP
+      - name: ISE PSN Server 2
+        local_ip: "{{ psn2_ip }}"
+        hostname: "{{ psn2_name }}"
+        roles:
+          - PDP
+      - name: ISE PSN Server 3
+        local_ip: "{{ psn3_ip }}"
+        hostname: "{{ psn3_name }}"
+        roles:
+          - PDP
+      - name: ISE PSN Server 4
+        local_ip: "{{ psn4_ip }}"
+        hostname: "{{ psn4_name }}"
+        roles:
+          - PDP
+
+
+  - name: Wait for secondary nodes to finish sync 
+    pause:
+      minutes: 90
+
+
+  - name: Delete the PSN role from the primary node
+    cisco.ise.personas_promote_primary:
+      ip: "{{ pan1_ip }}"
+      hostname: "{{ pan1_name }}"
+      username: "{{ ise_username }}"
+      password: "{{ ise_password }}"
+      roles:
+        - PPAN
+        - MNT-ACTIVE
