@@ -471,12 +471,6 @@
       attributeValue: "127.0.0.1"
     register: condition
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "EST"
-    register: condition
-
   - name: Create EST policy set
     cisco.ise.network_access_policy_set:
       <<: *ise_login 
@@ -484,7 +478,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
@@ -507,12 +501,6 @@
       attributeValue: "Employee"
     register: condition
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "VPN_Employee"
-    register: condition
-
   - name: Create Employee VPN policy set
     cisco.ise.network_access_policy_set:
       <<: *ise_login 
@@ -520,7 +508,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
@@ -543,12 +531,6 @@
       attributeValue: "Contractor"
     register: condition
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "VPN_Contractor"
-    register: condition
-
   - name: Create Contractor VPN policy set
     cisco.ise.network_access_policy_set:
       <<: *ise_login 
@@ -556,7 +538,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
@@ -566,12 +548,6 @@
     register: result
 
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "Wired_802.1X"
-    register: condition
-
   - name: Create Wired DOT1X policy set
     cisco.ise.network_access_policy_set:
       <<: *ise_login 
@@ -579,7 +555,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
@@ -588,11 +564,6 @@
       name: "Wired DOT1X"
     register: result
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "Wired_MAB"
-    register: condition
 
   - name: Create Wired MAB policy set
     cisco.ise.network_access_policy_set:
@@ -601,7 +572,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
@@ -624,12 +595,6 @@
       attributeValue: "PSK"
     register: condition
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "SSID_PSK"
-    register: condition
-
   - name: Create PSK SSID policy set
     cisco.ise.network_access_policy_set:
       <<: *ise_login 
@@ -637,7 +602,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
@@ -660,12 +625,6 @@
       attributeValue: "OPEN"
     register: condition
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "SSID_OPEN"
-    register: condition
-
   - name: Create OPEN SSID policy set
     cisco.ise.network_access_policy_set:
       <<: *ise_login 
@@ -673,7 +632,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
@@ -696,12 +655,6 @@
       attributeValue: "SECURE"
     register: condition
 
-  - name: Get a network access conditions by name
-    cisco.ise.network_access_conditions_info:
-      <<: *ise_login 
-      name: "SSID_SECURE"
-    register: condition
-
   - name: Create SECURE SSID policy set
     cisco.ise.network_access_policy_set:
       <<: *ise_login 
@@ -709,7 +662,7 @@
       condition:
         conditionType: "ConditionReference"
         isNegate: False
-        id: "{{ condition.ise_response.response.id }}"
+        id: "{{ condition.ise_response.id }}"
       default: False
       description: ""
       isProxy: False
