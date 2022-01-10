@@ -3,7 +3,7 @@
   hosts: ise_servers
  
   vars_files:
-    - vars.yml.local
+    - vars.yml
   gather_facts: no
 
   vars:

@@ -1,19 +1,19 @@
 # 20211207 ISE Webinar
 
-This project runs Terraform + Ansible demo for ISE. It follows the demo performed during the Automated ISE setup with Infrastructure as Code tools (December 2021) @ [Cisco ISE YouTube Channel](http://cs.co/ise-videos)
+This project runs Terraform + Ansible demo for ISE. It follows the demo performed during the [Automated ISE setup with Infrastructure as Code tools Webinar](https://www.youtube.com/watch?v=tN_nTEE48Ys)(December 2021) @ [Cisco ISE YouTube Channel](http://cs.co/ise-videos)
 
 At a high level it does the following:
 
 Terraform:
-- Setup VPC and other networking resources
+- Setup VPC, subnets, routing and other networking resources on AWS
 - Setup 6 ISE instances: Uses two separate modules. One for Admin/Monitoring node with m5.4xlarge instance type and 1.2TB EBS volume, and another for Policy Services node (PSN) with c5.4xlarge instance type and 600GB EBS volume. Also for PSN, the instance IPs are added to the AWS network load balancer to serve RADIUS and TACACS+.
 - Setup AWS Network Load Balancer
-- Setup Route 53 entries
+- Setup Route 53 entries (The sample code utilizes exisisting ARN for the DNS zones, you will need to update it for your environment)
 - Setup S3 bucket with transfer family for SFTP access
 - Create Ansible variables file
 
 Ansible:
-- Import Certificate
+- Import Let's Encrypt Root & Intermediate CA Certificates and signed server certificate and applyt it for EAP, DTLS, and Portal use
 - Setup AD
 - Add sample groups & users
 - Add sample network devices
@@ -66,12 +66,12 @@ First, initialize Terraform:
 terraform init
 ```
 
-Rename the included `terraform.samplevars` to `terraform.tfvars` file and modify to suit your environment:
+Rename the included `terraform.samplevars` to `terraform.tfvars` file and modify to suit your environment. If changing the AWS region, the AMI ID also needs to be updated:
 ```
 mv terraform.samplevars terraform.tfvars
 ```
 
-Modify the `run_firt.sh` to suit your environment. Note the username `admin` should not be changed and the `password` entry should be more than 8 characters long and have at least one of each; lower, upper, and a number. Run the `run_first.sh` to generate the userdata files that will be referenced by terraform config.
+Modify the `run_first.sh` to suit your environment. Note the username `admin` should not be changed and the `password` entry should be more than 8 characters long and have at least one of each; lower, upper, and a number. Run the `run_first.sh` to generate the userdata files that will be referenced by terraform config.
 
 Apply the configuration
 ```
@@ -80,13 +80,13 @@ terraform apply
 
 Type `yes`
 
-This will take about 30 mintes for ISE instances to be fully booted up. Once both nodes can be accessed via GUI, you can run the ansible playbook.
+This will take about 30 mintes for ISE instances to be fully booted up. Once all nodes can be accessed via GUI, you can run the ansible playbook.
 ```
 cd ansible
 ansible-playbook demo_all.yml
 ```
 
-Once demo finishes, you can run following to remove the setup in AWS:
+Once demo finishes, you can run the following commands to remove the setup in AWS:
 ```
 cd ..
 terraform destroy
